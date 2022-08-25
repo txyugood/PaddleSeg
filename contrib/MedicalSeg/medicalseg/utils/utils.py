@@ -154,7 +154,7 @@ def get_image_list(image_path, valid_suffix=None, filter_key=None):
     """
     if valid_suffix is None:
         valid_suffix = [
-            'nii.gz', 'nii', 'dcm', 'nrrd', 'mhd', 'raw', 'npy', 'mha'
+            'nii.gz', 'nii', 'dcm', 'nrrd', 'mhd', 'raw', 'npy', 'mha', 'png'
         ]
 
     image_list = []

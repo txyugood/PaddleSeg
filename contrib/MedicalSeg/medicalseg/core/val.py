@@ -22,8 +22,21 @@ import paddle.nn.functional as F
 
 from medicalseg.core import infer
 from medicalseg.utils import metric, TimeAverager, calculate_eta, logger, progbar, loss_computation, add_image_vdl, save_array
-
+from medpy import metric as medpy_metric
 np.set_printoptions(suppress=True)
+
+
+def calculate_metric_percase(pred, gt):
+    pred[pred > 0] = 1
+    gt[gt > 0] = 1
+    if pred.sum() > 0 and gt.sum() > 0:
+        dice = medpy_metric.binary.dc(pred, gt)
+        hd95 = medpy_metric.binary.hd95(pred, gt)
+        return dice, hd95
+    elif pred.sum() > 0 and gt.sum() == 0:
+        return 1, 0
+    else:
+        return 0, 0
 
 
 def evaluate(
@@ -96,7 +109,8 @@ def evaluate(
     mdice = 0.0
     channel_dice_array = np.array([])
     loss_all = 0.0
-
+    result_pred_map = {}
+    result_label_map = {}
     with paddle.no_grad():
         for iter, (im, label, idx) in enumerate(loader):
             reader_cost_averager.record(time.time() - batch_start)
@@ -121,46 +135,56 @@ def evaluate(
                     im,
                     ori_shape=label.shape[-3:],
                     transforms=eval_dataset.transforms.transforms)
-
-            if writer is not None:  # TODO visualdl single channel pseudo label map transfer to
-                pass
-
-            # logits [N, num_classes, D, H, W] Compute loss to get dice
-            loss, per_channel_dice = loss_computation(logits, label, new_loss)
-            loss = sum(loss)
-
-            if auc_roc:
-                logits = F.softmax(logits, axis=1)
-                if logits_all is None:
-                    logits_all = logits.numpy()
-                    label_all = label.numpy()
+            if type(model).__name__ == "VisionTransformer":
+                if idx[0] in result_pred_map.keys():
+                    result_pred_map[idx[
+                        0]] += [pred.numpy().squeeze(axis=(0, 1))]
+                    result_label_map[idx[0]] += [label.numpy().squeeze(axis=0)]
                 else:
-                    logits_all = np.concatenate(
-                        [logits_all, logits.numpy()])  # (KN, C, H, W)
-                    label_all = np.concatenate([label_all, label.numpy()])
-
-            loss_all += loss.numpy()
-            mdice += np.mean(per_channel_dice)
-            if channel_dice_array.size == 0:
-                channel_dice_array = per_channel_dice
+                    result_pred_map[idx[
+                        0]] = [pred.numpy().squeeze(axis=(0, 1))]
+                    result_label_map[idx[0]] = [label.numpy().squeeze(axis=0)]
             else:
-                channel_dice_array += per_channel_dice
-            if is_save_data:
-                if iter < 5:
-                    save_array(
-                        save_path=os.path.join(save_dir, str(iter)),
-                        save_content={
-                            'pred': pred.numpy(),
-                            'label': label.numpy(),
-                            'img': im.numpy()
-                        },
-                        form=('npy', 'nii.gz'),
-                        image_infor={
-                            "spacing": image_json["spacing_resample"],
-                            'direction': image_json["direction"],
-                            "origin": image_json["origin"],
-                            'format': "xyz"
-                        })
+                if writer is not None:  # TODO visualdl single channel pseudo label map transfer to
+                    pass
+
+                # logits [N, num_classes, D, H, W] Compute loss to get dice
+                loss, per_channel_dice = loss_computation(logits, label,
+                                                          new_loss)
+                loss = sum(loss)
+
+                if auc_roc:
+                    logits = F.softmax(logits, axis=1)
+                    if logits_all is None:
+                        logits_all = logits.numpy()
+                        label_all = label.numpy()
+                    else:
+                        logits_all = np.concatenate(
+                            [logits_all, logits.numpy()])  # (KN, C, H, W)
+                        label_all = np.concatenate([label_all, label.numpy()])
+
+                loss_all += loss.numpy()
+                mdice += np.mean(per_channel_dice)
+                if channel_dice_array.size == 0:
+                    channel_dice_array = per_channel_dice
+                else:
+                    channel_dice_array += per_channel_dice
+                if is_save_data:
+                    if iter < 5:
+                        save_array(
+                            save_path=os.path.join(save_dir, str(iter)),
+                            save_content={
+                                'pred': pred.numpy(),
+                                'label': label.numpy(),
+                                'img': im.numpy()
+                            },
+                            form=('npy', 'nii.gz'),
+                            image_infor={
+                                "spacing": image_json["spacing_resample"],
+                                'direction': image_json["direction"],
+                                "origin": image_json["origin"],
+                                'format': "xyz"
+                            })
 
             batch_cost_averager.record(
                 time.time() - batch_start, num_samples=len(label))
@@ -173,6 +197,44 @@ def evaluate(
             reader_cost_averager.reset()
             batch_cost_averager.reset()
             batch_start = time.time()
+
+    if type(model).__name__ == "VisionTransformer":
+        keys = result_pred_map.keys()
+        for key in keys:
+            result_pred_map[key] = np.concatenate(result_pred_map[key])
+            result_label_map[key] = np.concatenate(result_label_map[key])
+        metric_total = 0.0
+        for key in keys:
+            metric_list = []
+            for i in range(1, 9):
+                metric_list.append(
+                    calculate_metric_percase(result_pred_map[key] == i,
+                                             result_label_map[key] == i))
+            metric_total += np.array(metric_list)
+        metric_total = metric_total / len(keys)
+
+        performance = np.mean(metric_total, axis=0)[0]
+        mean_hd95 = np.mean(metric_total, axis=0)[1]
+        result_dict = {
+            "mdice": mdice,
+            "performance": performance,
+            "mean_hd95": mean_hd95
+        }
+
+        performance = np.mean(metric_total, axis=0)[0]
+        mean_hd95 = np.mean(metric_total, axis=0)[1]
+        result_dict = {
+            "mdice": mdice,
+            "performance": performance,
+            "mean_hd95": mean_hd95
+        }
+
+        if print_detail:
+            infor = "[EVAL] #Images: {}, performance: {:.4f}, mean_hd95: {:6f}".format(
+                len(eval_dataset), performance, mean_hd95)
+            logger.info(infor)
+
+        return result_dict
 
     mdice /= total_iters
     channel_dice_array /= total_iters

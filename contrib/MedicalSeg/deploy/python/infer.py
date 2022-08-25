@@ -18,6 +18,8 @@ import codecs
 import warnings
 import argparse
 
+import cv2
+
 LOCAL_PATH = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.join(LOCAL_PATH, '..', '..'))
 
@@ -427,6 +429,12 @@ class Predictor:
         Args:
         Img(str): A batch of image path
         """
+        if "png" in img:
+            img = cv2.imread(img, 0)
+            img = cv2.resize(img, (224, 224))
+            img = img[np.newaxis, np.newaxis, :, :]
+            return img.astype('float32')
+
         if not "npy" in img:
             image_files = get_image_list(img, None, None)
             warnings.warn(

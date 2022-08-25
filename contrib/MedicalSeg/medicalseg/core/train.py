@@ -251,8 +251,12 @@ def train(model,
                     shutil.rmtree(model_to_remove)
 
                 if val_dataset is not None:
-                    if result_dict['mdice'] > best_mean_dice:
-                        best_mean_dice = result_dict['mdice']
+                    if type(model).__name__ == "VisionTransformer":
+                        metric = "performance"
+                    else:
+                        metric = 'mdice'
+                    if result_dict[metric] > best_mean_dice:
+                        best_mean_dice = result_dict[metric]
                         best_model_iter = iter
                         best_model_dir = os.path.join(save_dir, "best_model")
                         paddle.save(
