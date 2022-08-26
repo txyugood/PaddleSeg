@@ -47,22 +47,24 @@ def main():
     os.makedirs(os.path.join(test_dir, 'images'), exist_ok=True)
     os.makedirs(os.path.join(test_dir, 'labels'), exist_ok=True)
 
-    # train_lines = []
-    # for sample in sample_list:
-    #     sample = sample.strip('\n')
-    #     data_path = os.path.join(origin_dir,'train_npz', sample +'.npz')
-    #     data = np.load(data_path)
-    #     image, label = data['image'], data['label']
-    #     image = image * 255.0
-    #     lbl_pil = Image.fromarray(label.astype(np.uint8), mode='P')
-    #     lbl_pil.putpalette(color_map)
-    #
-    #     cv2.imwrite(os.path.join(train_dir,'images', sample +'.png'), image)
-    #     lbl_pil.save(os.path.join(train_dir,'labels', sample +'.png'))
-    #
-    #     train_lines.append(os.path.join('train/images', sample +'.png') + " " +os.path.join('train/labels', sample +'.png') + "\n")
-    # with open(os.path.join(target_dir, 'train.txt'), 'w+') as f:
-    #     f.writelines(train_lines)
+    train_lines = []
+    for sample in sample_list:
+        sample = sample.strip('\n')
+        data_path = os.path.join(origin_dir, 'train_npz', sample + '.npz')
+        data = np.load(data_path)
+        image, label = data['image'], data['label']
+        image = image * 255.0
+        lbl_pil = Image.fromarray(label.astype(np.uint8), mode='P')
+        lbl_pil.putpalette(color_map)
+
+        cv2.imwrite(os.path.join(train_dir, 'images', sample + '.png'), image)
+        lbl_pil.save(os.path.join(train_dir, 'labels', sample + '.png'))
+
+        train_lines.append(
+            os.path.join('train/images', sample + '.png') + " " + os.path.join(
+                'train/labels', sample + '.png') + "\n")
+    with open(os.path.join(target_dir, 'train.txt'), 'w+') as f:
+        f.writelines(train_lines)
 
     test_lines = []
     sample_list = open(

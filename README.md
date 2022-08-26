@@ -24,13 +24,25 @@ PaddlePaddle == 2.3.1
 ## 5.快速开始
 ### 训练：
 
-下载数据集解压后，将数据集链接到项目的data目录下。
+下载数据集解压后，首先将数据集链接到项目的data目录下。
 
 ```shell
 cd contrib/MedicalSeg/
 mkdir data
 cd data
+#建立软链接
 ln -s path/to/Synapse_image Synapse_image
+#退出目录
+cd ..
+```
+
+然后安装依赖包。
+```shell
+pip install -r requirements.txt
+```
+
+最后启动训练脚本。
+```
 nohup python -u train.py --config configs/trans_unet/trans_unet_synapse.yml --do_eval --save_interval 1000 --has_dataset_json False --is_save_data False --num_workers 4 --log_iters 10  > train.log &
 tail -f train.log
 ```
